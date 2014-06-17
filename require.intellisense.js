@@ -41,19 +41,66 @@
         }
     });
 
-    requirejs.load = function (context, moduleName, url) {
+    var DEBUG = 3, WARN = 2, ERROR = 1, NONE = 0;
+
+    //Set the logging level
+    var logLevel = DEBUG;
+
+    function log(level) {
+        var msg = Array.prototype.slice.call(arguments, 1);
+        if (logLevel >= level) {
+            msg.splice(0, 0, level == DEBUG ? 'DEBUG' : level == WARN ?
+              'WARN' : level == ERROR ? 'ERROR' : 'UNKNOWN');
+            intellisense.logMessage(msg.join(':'));
+        }
+    }
+    
+    requirejs.onError = function (e) {
+        var modules = e.requireModules && e.requireModules.join(',');
+        switch (e.requireType) {
+            case 'scripterror':
+                log(WARN, modules, "Dependency script not yet loaded, check the stated define name matches the require. -> " + e.toString());
+                break;
+            default:
+                log(ERROR, e.requireType, modules, e.toString());
+                break;
+        }
+    };
+
+    requirejs.load = function (context, moduleName, url) {    
+        log(DEBUG, "in load, url = " + url + ' module name = ' + moduleName);
+        
         moduleUrls.push(url);
         oldLoad.call(requirejs, context, moduleName, url);
     }
 
+    function isArray(it) {
+        return Object.prototype.toString.call(it) === '[object Array]';
+    }
+
     window.define = function (name, deps, callback) {
-        defines.push([name, deps, callback]);
+        if (typeof name !== 'string') {
+            callback = deps;
+            deps = name;
+            name = null;
+        }
+        if (!isArray(deps)) {
+            log(DEBUG, 'define: ' + name + ' deps was not an array');    
+            callback = deps;
+            deps = null;
+        }
 
-        oldRequire.call(window, deps, callback);
+        log(DEBUG, "in define : name = " + name);
 
-        defines.forEach(function (define) {
-            oldDefine.apply(window, define);
-        });
+        if (name) {
+            defines.push([name, deps, callback]);
+
+            oldRequire.call(window, deps, callback);
+
+            defines.forEach(function (define) {
+                oldDefine.apply(window, define);
+            });
+        }
     }
     
     window.define.amd = {
@@ -74,6 +121,7 @@
 
                 for (var i = 0; i < scriptElements.length; i++) {
                     var script = scriptElements[i];
+                    intellisense.logMessage("script: " + script.src);
                     if (script.src == moduleUrls[index]) {
                         loadEvent.currentTarget = script;
                         requirejs.onScriptLoad(loadEvent);
